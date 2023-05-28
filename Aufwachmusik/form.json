@@ -1,0 +1,103 @@
+{
+    "elements": [
+        {
+            "type": "RowLayout",
+            "items": [
+                {
+                    "type": "SelectVariable",
+                    "name": "DevicePower",
+                    "caption": "Power (Aus/An)",
+                    "width": "600px",
+                    "validVariableTypes": [
+                        0,
+                        1
+                    ],
+                    "requiredAction": 1,
+                    "onChange": "AWM_ModifyButton($id, 'DevicePowerConfigurationButton', 'ID ' . $DevicePower . ' bearbeiten', $DevicePower);"
+                }
+            ]
+        },
+        {
+            "type": "RowLayout",
+            "items": [
+                {
+                    "type": "SelectVariable",
+                    "name": "DeviceVolume",
+                    "caption": "Lautstärke",
+                    "width": "600px",
+                    "validVariableTypes": [
+                        0,
+                        1
+                    ],
+                    "requiredAction": 1,
+                    "onChange": "AWM_ModifyButton($id, 'DeviceVolumeConfigurationButton', 'ID ' . $DeviceVolume . ' bearbeiten', $DeviceVolume);"
+                }
+            ]
+        },
+        {
+            "type": "RowLayout",
+            "items": [
+                {
+                    "type": "SelectVariable",
+                    "name": "DevicePresets",
+                    "caption": "Presets",
+                    "width": "600px",
+                    "validVariableTypes": [
+                        0,
+                        1
+                    ],
+                    "requiredAction": 1,
+                    "onChange": "AWM_ModifyButton($id, 'DevicePresetsConfigurationButton', 'ID ' . $DevicePresets . ' bearbeiten', $DevicePresets);"
+                }
+            ]
+        },
+        {
+            "type": "Label",
+            "caption": " "
+        },
+        {
+            "type": "RowLayout",
+            "items": [
+                {
+                    "type": "SelectEvent",
+                    "name": "WeeklySchedule",
+                    "caption": "Wochenplan",
+                    "width": "600px",
+                    "onChange": "AWM_ModifyButton($id, 'WeeklyScheduleConfigurationButton', 'ID ' . $WeeklySchedule . ' bearbeiten', $WeeklySchedule);"
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "TestCenter"
+        }
+    ],
+    "status": [
+        {
+            "code": 101,
+            "icon": "active",
+            "caption": "Aufwachmusik wird erstellt"
+        },
+        {
+            "code": 102,
+            "icon": "active",
+            "caption": "Aufwachmusik ist aktiv"
+        },
+        {
+            "code": 103,
+            "icon": "active",
+            "caption": "Aufwachmusik wird gelöscht"
+        },
+        {
+            "code": 104,
+            "icon": "inactive",
+            "caption": "Aufwachmusik ist inaktiv"
+        },
+        {
+            "code": 200,
+            "icon": "inactive",
+            "caption": "Es ist Fehler aufgetreten, weitere Informationen unter Meldungen, im Log oder Debug!"
+        }
+    ]
+}

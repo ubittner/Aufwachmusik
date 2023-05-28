@@ -1,0 +1,14 @@
+{
+    "id": "{E0DF38B8-54AE-97D6-3614-59F00C4800C8}",
+    "name": "Aufwachmusik",
+    "type": 3,
+    "vendor": "UB",
+    "aliases": [
+        "Aufwachmusik"
+    ],
+    "url": "https://github.com/ubittner/Aufwachmusik/tree/main/Aufwachmusik",
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "AWM"
+}
