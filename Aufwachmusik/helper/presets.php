@@ -26,7 +26,6 @@ trait Presets
 
         $variableInfo = IPS_GetVariable($this->ReadPropertyInteger('DevicePresets'));
         $profileName = $variableInfo['VariableProfile'];
-        echo $profileName;
         if ($profileName == '') {
             $profileName = $variableInfo['VariableCustomProfile'];
         }
