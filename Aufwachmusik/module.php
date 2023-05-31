@@ -59,7 +59,7 @@ class Aufwachmusik extends IPSModule
         if (!IPS_VariableProfileExists($profile)) {
             IPS_CreateVariableProfile($profile, 1);
         }
-        IPS_SetVariableProfileIcon($profile, 'Database');
+        IPS_SetVariableProfileIcon($profile, 'Menu');
         IPS_SetVariableProfileValues($profile, 0, 6, 0);
         IPS_SetVariableProfileDigits($profile, 0);
         IPS_SetVariableProfileAssociation($profile, 0, 'Zuletzt wiedergegeben', '', 0xFF0000);
