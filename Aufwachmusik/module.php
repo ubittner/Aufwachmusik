@@ -19,7 +19,11 @@ class Aufwachmusik extends IPSModule
 {
     //Helper
     use Control;
+    use Presets;
     use WeeklySchedule;
+
+    //Constants
+    private const MODULE_PREFIX = 'AWM';
 
     public function Create()
     {
@@ -51,7 +55,7 @@ class Aufwachmusik extends IPSModule
         }
 
         //Presets
-        $profile = 'AWM.' . $this->InstanceID . '.Presets';
+        $profile = self::MODULE_PREFIX . '.' . $this->InstanceID . '.Presets';
         if (!IPS_VariableProfileExists($profile)) {
             IPS_CreateVariableProfile($profile, 1);
         }
@@ -73,7 +77,7 @@ class Aufwachmusik extends IPSModule
         }
 
         //Duration
-        $profile = 'AWM.' . $this->InstanceID . '.Duration';
+        $profile = self::MODULE_PREFIX . '.' . $this->InstanceID . '.Duration';
         if (!IPS_VariableProfileExists($profile)) {
             IPS_CreateVariableProfile($profile, 1);
         }
@@ -108,7 +112,7 @@ class Aufwachmusik extends IPSModule
 
         #### Timer
 
-        $this->RegisterTimer('IncreaseVolume', 0, 'AWM_IncreaseVolume(' . $this->InstanceID . ');');
+        $this->RegisterTimer('IncreaseVolume', 0, self::MODULE_PREFIX . '_IncreaseVolume(' . $this->InstanceID . ');');
     }
 
     public function Destroy()
@@ -120,7 +124,7 @@ class Aufwachmusik extends IPSModule
         $profiles = ['Presets', 'Duration'];
         if (!empty($profiles)) {
             foreach ($profiles as $profile) {
-                $profileName = 'AWM.' . $this->InstanceID . '.' . $profile;
+                $profileName = self::MODULE_PREFIX . '.' . $this->InstanceID . '.' . $profile;
                 $this->UnregisterProfile($profileName);
             }
         }
@@ -163,29 +167,28 @@ class Aufwachmusik extends IPSModule
             $id = $this->ReadPropertyInteger($name['propertyName']);
             if ($id > 1 && @IPS_ObjectExists($id)) { //0 = main category, 1 = none
                 $this->RegisterReference($id);
-                $this->SendDebug('RegisterMessage', 'ID: ' . $id . ', Name: ' . $name['propertyName'] . ', Message: ' . $name['messageCategory'], 0);
                 if ($name['messageCategory'] != 0) {
-                    $this->SendDebug('RegisterMessage', ' wird ausgeführt', 0);
-                    $this->SendDebug('RegisterMessage', 'ID: ' . $id . ', Message: ' . $name['messageCategory'], 0);
                     $this->RegisterMessage($id, $name['messageCategory']);
                 }
             }
         }
 
-        //Hide
+        //Hide process finished
         if (!$this->GetValue('WakeUpMusic')) {
             @IPS_SetHidden($this->GetIDForIdent('ProcessFinished'), true);
+        }
+
+        //Update presets
+        $this->UpdatePresetsProfile();
+
+        //Check weekly schedule
+        if (!$this->ValidateWeeklySchedule()) {
+            $this->DeleteWeeklySchedule();
         }
     }
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
-        $this->SendDebug('MessageSink', 'SenderID: ' . $SenderID . ', Message: ' . $Message, 0);
-        if (!empty($Data)) {
-            foreach ($Data as $key => $value) {
-                $this->SendDebug(__FUNCTION__, 'Data[' . $key . '] = ' . json_encode($value), 0);
-            }
-        }
         switch ($Message) {
             case IPS_KERNELSTARTED:
                 $this->KernelReady();
@@ -201,18 +204,24 @@ class Aufwachmusik extends IPSModule
                 //$Data[5] = timestamp last value
 
                 //Device power
-                $devicePower = $this->ReadPropertyInteger('DevicePower');
-                if ($SenderID == $devicePower) {
-                    if (!GetValue($devicePower)) {
+                $devicePowerID = $this->ReadPropertyInteger('DevicePower');
+                if ($SenderID == $devicePowerID) {
+                    //Device is powered off
+                    if ($this->GetValue('WakeUpMusic') && !GetValue($devicePowerID)) {
+                        $this->SendDebug(__FUNCTION__, 'Abbruch, Gerät wurde ausgeschaltet!', 0);
                         $this->ToggleWakeUpMusic(false);
                     }
                 }
 
                 //Device volume
-                $deviceVolume = $this->ReadPropertyInteger('DeviceVolume');
-                if ($SenderID == $deviceVolume) {
+                $deviceVolumeID = $this->ReadPropertyInteger('DeviceVolume');
+                if ($SenderID == $deviceVolumeID) {
                     if ($this->GetValue('WakeUpMusic')) {
-                        if (GetValue($deviceVolume) > $this->ReadAttributeInteger('TargetVolume')) {
+                        $this->SendDebug(__FUNCTION__, 'Geräte-Lautstärke: ' . $Data[0], 0);
+                        $deviceVolume = GetValue($deviceVolumeID);
+                        $cyclingVolume = $this->ReadAttributeInteger('CyclingVolume');
+                        if ($deviceVolume != $cyclingVolume) {
+                            $this->SendDebug(__FUNCTION__, 'Abbruch, Geräte-Lautstärke wurde manuell geändert!', 0);
                             $this->ToggleWakeUpMusic(false);
                         }
                     }
@@ -225,8 +234,10 @@ class Aufwachmusik extends IPSModule
                 //$Data[1] = next run
 
                 //Weekly schedule
-                if ($this->DetermineAction() == 1) {
-                    $this->ToggleWakeUpMusic(true);
+                if ($this->ValidateWeeklySchedule()) {
+                    if ($this->DetermineAction() == 1) {
+                        $this->ToggleWakeUpMusic(true);
+                    }
                 }
                 break;
 
@@ -239,64 +250,57 @@ class Aufwachmusik extends IPSModule
 
         ##### Elements
 
-        //Device power configuration button
+        //Device power
         $devicePowerID = $this->ReadPropertyInteger('DevicePower');
         $enableButton = false;
         if ($devicePowerID > 1 && @IPS_ObjectExists($devicePowerID)) { //0 = main category, 1 = none
             $enableButton = true;
         }
         $data['elements'][0]['items'][1] = [
-            'type'  => 'RowLayout',
-            'items' => [
-                [
-                    'type'     => 'OpenObjectButton',
-                    'caption'  => 'ID ' . $devicePowerID . ' bearbeiten',
-                    'name'     => 'DevicePowerConfigurationButton',
-                    'visible'  => $enableButton,
-                    'objectID' => $devicePowerID
-                ]
-            ]
+            'type'     => 'OpenObjectButton',
+            'caption'  => 'ID ' . $devicePowerID . ' bearbeiten',
+            'name'     => 'DevicePowerConfigurationButton',
+            'visible'  => $enableButton,
+            'objectID' => $devicePowerID
         ];
 
-        //Device volume configuration button
+        //Device volume
         $deviceVolumeID = $this->ReadPropertyInteger('DeviceVolume');
         $enableButton = false;
         if ($deviceVolumeID > 1 && @IPS_ObjectExists($deviceVolumeID)) { //0 = main category, 1 = none
             $enableButton = true;
         }
         $data['elements'][1]['items'][1] = [
-            'type'  => 'RowLayout',
-            'items' => [
-                [
-                    'type'     => 'OpenObjectButton',
-                    'caption'  => 'ID ' . $deviceVolumeID . ' bearbeiten',
-                    'name'     => 'DeviceVolumeConfigurationButton',
-                    'visible'  => $enableButton,
-                    'objectID' => $deviceVolumeID
-                ]
-            ]
+            'type'     => 'OpenObjectButton',
+            'caption'  => 'ID ' . $deviceVolumeID . ' bearbeiten',
+            'name'     => 'DeviceVolumeConfigurationButton',
+            'visible'  => $enableButton,
+            'objectID' => $deviceVolumeID
         ];
 
-        //Device presets configuration button
+        //Device presets
         $devicePresetsID = $this->ReadPropertyInteger('DevicePresets');
         $enableButton = false;
         if ($devicePresetsID > 1 && @IPS_ObjectExists($devicePresetsID)) { //0 = main category, 1 = none
             $enableButton = true;
         }
         $data['elements'][2]['items'][1] = [
-            'type'  => 'RowLayout',
-            'items' => [
-                [
-                    'type'     => 'OpenObjectButton',
-                    'caption'  => 'ID ' . $devicePresetsID . ' bearbeiten',
-                    'name'     => 'DevicePresetsConfigurationButton',
-                    'visible'  => $enableButton,
-                    'objectID' => $devicePresetsID
-                ]
-            ]
+            'type'     => 'OpenObjectButton',
+            'caption'  => 'ID ' . $devicePresetsID . ' bearbeiten',
+            'name'     => 'DevicePresetsConfigurationButton',
+            'visible'  => $enableButton,
+            'objectID' => $devicePresetsID
         ];
 
-        //Weekly schedule configuration button
+        $data['elements'][2]['items'][2] = [
+            'type'    => 'Button',
+            'caption' => 'Presets aktualisieren',
+            'name'    => 'UpdatePresetsConfigurationButton',
+            'visible' => $enableButton,
+            'onClick' => 'AWM_UpdatePresetsProfile($id);'
+        ];
+
+        //Weekly schedule
         $weeklyScheduleID = $this->ReadPropertyInteger('WeeklySchedule');
         $enableButton = false;
         if ($weeklyScheduleID > 1 && @IPS_ObjectExists($weeklyScheduleID)) { //0 = main category, 1 = none
@@ -321,7 +325,6 @@ class Aufwachmusik extends IPSModule
                     [
                         'type'  => 'RowLayout',
                         'items' => [
-                            //Monday
                             [
                                 'type'  => 'CheckBox',
                                 'name'  => 'UseMonday',

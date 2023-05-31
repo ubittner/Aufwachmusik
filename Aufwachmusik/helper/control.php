@@ -8,6 +8,8 @@
  * @license       https://creativecommons.org/licenses/by-nc-sa/4.0/ CC BY-NC-SA 4.0
  */
 
+/** @noinspection PhpVoidFunctionResultUsedInspection */
+
 declare(strict_types=1);
 
 trait Control
@@ -27,9 +29,11 @@ trait Control
      */
     public function ToggleWakeUpMusic(bool $State): bool
     {
-        $this->SendDebug(__FUNCTION__, 'wird ausgeführt.', 0);
-        $this->SendDebug(__FUNCTION__, 'Status: ' . json_encode($State), 0);
-
+        $debugText = 'Aufwachmusik ausschalten';
+        if ($State) {
+            $debugText = 'Aufwachmusik einschalten';
+        }
+        $this->SendDebug(__FUNCTION__, $debugText, 0);
         //Off
         if (!$State) {
             $this->SetValue('WakeUpMusic', false);
@@ -44,21 +48,19 @@ trait Control
             $this->SetTimerInterval('IncreaseVolume', 0);
         } //On
         else {
-            $devicePowerID = $this->ReadPropertyInteger('DevicePower');
-            if ($devicePowerID <= 1 || @!IPS_ObjectExists($devicePowerID)) {
-                $this->SendDebug(__FUNCTION__, 'Abbruch, DevicePower (Aus/An) ist nicht vorhanden!', 0);
+            if (!$this->CheckDevicePowerID()) {
                 return false;
             }
-
-            $deviceVolumeID = $this->ReadPropertyInteger('DeviceVolume');
-            if ($deviceVolumeID <= 1 || @!IPS_ObjectExists($deviceVolumeID)) {
-                $this->SendDebug(__FUNCTION__, 'Abbruch, DeviceVolume (Lautstärke) ist nicht vorhanden!', 0);
+            if (!$this->CheckDeviceVolumeID()) {
                 return false;
             }
-
+            //Check if device is already powered on
+            if (GetValue($this->ReadPropertyInteger('DevicePower'))) {
+                $this->SendDebug(__FUNCTION__, 'Abbruch, Gerät ist bereits eingeschaltet!', 0);
+                return false;
+            }
             //Timestamp
             $timestamp = time() + $this->GetValue('Duration') * 60;
-
             //Set values
             $this->SetValue('WakeUpMusic', true);
             IPS_SetDisabled($this->GetIDForIdent('Volume'), true);
@@ -66,81 +68,75 @@ trait Control
             IPS_SetDisabled($this->GetIDForIdent('Duration'), true);
             $this->SetValue('ProcessFinished', date('d.m.Y, H:i:s', $timestamp));
             @IPS_SetHidden($this->GetIDForIdent('ProcessFinished'), false);
-
             //Set attributes
             $this->WriteAttributeInteger('TargetVolume', $this->GetValue('Volume'));
             $this->WriteAttributeInteger('CyclingVolume', 1);
+            $this->SendDebug(__FUNCTION__, 'Lautstärke: 1', 0);
             $this->WriteAttributeInteger('EndTime', $timestamp);
-
             //Set device volume
-            @RequestAction($deviceVolumeID, 1);
-
+            $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), 1);
+            //Try again
+            if (!$setDeviceVolume) {
+                @RequestAction($this->ReadPropertyInteger('DeviceVolume'), 1);
+            }
             //Set device preset
-            $devicePresetID = $this->ReadPropertyInteger('DevicePresets');
-            if ($devicePresetID > 1 && @IPS_ObjectExists($devicePresetID)) {
+            if ($this->CheckDevicePresetsID()) {
+                $devicePresetID = $this->ReadPropertyInteger('DevicePresets');
                 $preset = $this->GetValue('Presets');
-                if ($preset > 1) {
-                    @RequestAction($devicePresetID, $preset);
+                if ($preset >= 1) {
+                    $setDevicePreset = @RequestAction($devicePresetID, $preset);
+                    $this->SendDebug(__FUNCTION__, 'Preset: ' . $preset, 0);
+                    //Try again
+                    if (!$setDevicePreset) {
+                        @RequestAction($devicePresetID, $preset);
+                    }
                 }
             }
-
             //Power device on
-            @RequestAction($devicePowerID, true);
-
+            $this->SendDebug(__FUNCTION__, 'Gerät einschalten', 0);
+            $powerOnDevice = @RequestAction($this->ReadPropertyInteger('DevicePower'), true);
+            //Try again
+            if (!$powerOnDevice) {
+                @RequestAction($this->ReadPropertyInteger('DevicePower'), true);
+            }
             //Set next cycle
             $this->SetTimerInterval('IncreaseVolume', $this->CalculateNextCycle() * 1000);
         }
-
         return true;
     }
 
     /**
-     * Decreases the volume of the device.
+     * Increases the volume of the device.
      *
      * @return void
      * @throws Exception
      */
     public function IncreaseVolume(): void
     {
-        $this->SendDebug(__FUNCTION__, 'wird ausgeführt.', 0);
-
-        $devicePowerID = $this->ReadPropertyInteger('DevicePower');
-        if ($devicePowerID <= 1 || @!IPS_ObjectExists($devicePowerID)) {
-            $this->SendDebug(__FUNCTION__, 'Abbruch, DevicePower (Aus/An) ist nicht vorhanden!', 0);
-        }
-
-        $deviceVolumeID = $this->ReadPropertyInteger('DeviceVolume');
-        if ($deviceVolumeID <= 1 || @!IPS_ObjectExists($deviceVolumeID)) {
-            $this->SendDebug(__FUNCTION__, 'Abbruch, DevicePower (Lautstärke) ist nicht vorhanden!', 0);
-        }
-
-        $actualDeviceVolume = GetValue($deviceVolumeID);
-        $targetVolume = $this->ReadAttributeInteger('TargetVolume');
-
-        //Abort, if the device has been switched off by the user in the meantime
-        if (!GetValue($devicePowerID) || $actualDeviceVolume == 0) {
-            $this->ToggleWakeUpMusic(false);
+        if (!$this->CheckDevicePowerID()) {
             return;
         }
-
-        //Abort if the current volume is lower or higher than the last cycle volume
+        if (!$this->CheckDeviceVolumeID()) {
+            return;
+        }
         $cyclingVolume = $this->ReadAttributeInteger('CyclingVolume');
-        if ($actualDeviceVolume > ($cyclingVolume + 1) || $actualDeviceVolume < $cyclingVolume) {
-            $this->ToggleWakeUpMusic(false);
-            return;
-        }
-
+        $targetVolume = $this->ReadAttributeInteger('TargetVolume');
         //Last cycle
         if ($cyclingVolume == $targetVolume) {
             $this->ToggleWakeUpMusic(false);
             return;
         }
-
         //Cycle
+        $actualDeviceVolume = GetValue($this->ReadPropertyInteger('DeviceVolume'));
         if ($actualDeviceVolume >= 1 && $actualDeviceVolume < $targetVolume) {
             //Increase volume
-            @RequestAction($deviceVolumeID, $actualDeviceVolume + 1);
-            $this->WriteAttributeInteger('CyclingVolume', $actualDeviceVolume + 1);
+            $this->WriteAttributeInteger('CyclingVolume', $cyclingVolume + 1);
+            $this->SendDebug(__FUNCTION__, 'Lautstärke: ' . ($cyclingVolume + 1), 0);
+            $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $cyclingVolume + 1);
+            //Try again
+            if (!$setDeviceVolume) {
+                @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $cyclingVolume + 1);
+            }
             //Set next cycle
             $this->SetTimerInterval('IncreaseVolume', $this->CalculateNextCycle() * 1000);
         }
@@ -156,27 +152,73 @@ trait Control
      */
     private function CalculateNextCycle(): int
     {
-        $this->SendDebug(__FUNCTION__, 'wird ausgeführt.', 0);
-        $deviceVolumeID = $this->ReadPropertyInteger('DeviceVolume');
-        if ($deviceVolumeID <= 1 || @!IPS_ObjectExists($deviceVolumeID)) {
-            $this->SendDebug(__FUNCTION__, 'Abbruch, DeviceVolume (Lautstärke) ist nicht vorhanden!', 0);
-            return 0;
-        }
-        $actualDeviceVolume = GetValue($deviceVolumeID);
-        //Abort cases
-        if ($actualDeviceVolume == 0 || $actualDeviceVolume >= $this->ReadAttributeInteger('TargetVolume')) {
-            $this->ToggleWakeUpMusic(false);
+        if (!$this->CheckDeviceVolumeID()) {
             return 0;
         }
         $dividend = $this->ReadAttributeInteger('EndTime') - time();
-        $divisor = $this->ReadAttributeInteger('TargetVolume') - $actualDeviceVolume;
+        $divisor = $this->ReadAttributeInteger('TargetVolume') - GetValue($this->ReadPropertyInteger('DeviceVolume'));
         //Check dividend and divisor
         if ($dividend <= 0 || $divisor <= 0) {
             $this->ToggleWakeUpMusic(false);
             return 0;
         }
-        $remainingTime = intval(round($dividend / $divisor));
-        $this->SendDebug(__FUNCTION__, 'Nächste Ausführung in: ' . $remainingTime, 0);
-        return $remainingTime;
+        return intval(round($dividend / $divisor));
+    }
+
+    /**
+     * Checks for an existing device power id.
+     *
+     * @return bool
+     * false =  doesn't exist,
+     * true =   exists
+     *
+     * @throws Exception
+     */
+    private function CheckDevicePowerID(): bool
+    {
+        $devicePowerID = $this->ReadPropertyInteger('DevicePower');
+        if ($devicePowerID <= 1 || @!IPS_ObjectExists($devicePowerID)) {
+            $this->SendDebug(__FUNCTION__, 'Abbruch, Power (Aus/An) ist nicht vorhanden!', 0);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Checks for an existing device volume id.
+     *
+     * @return bool
+     * false =  doesn't exist,
+     * true =   exists
+     *
+     * @throws Exception
+     */
+    private function CheckDeviceVolumeID(): bool
+    {
+        $deviceVolumeID = $this->ReadPropertyInteger('DeviceVolume');
+        if ($deviceVolumeID <= 1 || @!IPS_ObjectExists($deviceVolumeID)) {
+            $this->SendDebug(__FUNCTION__, 'Abbruch, Lautstärke ist nicht vorhanden!', 0);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Checks for an existing device presets id.
+     *
+     * @return bool
+     * false =  doesn't exist,
+     * true =   exists
+     *
+     * @throws Exception
+     */
+    private function CheckDevicePresetsID(): bool
+    {
+        $devicePresetsID = $this->ReadPropertyInteger('DevicePresets');
+        if ($devicePresetsID <= 1 || @!IPS_ObjectExists($devicePresetsID)) {
+            $this->SendDebug(__FUNCTION__, 'Abbruch, Presets ist nicht vorhanden!', 0);
+            return false;
+        }
+        return true;
     }
 }
