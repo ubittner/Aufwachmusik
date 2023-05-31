@@ -130,12 +130,13 @@ trait Control
         $actualDeviceVolume = GetValue($this->ReadPropertyInteger('DeviceVolume'));
         if ($actualDeviceVolume >= 1 && $actualDeviceVolume < $targetVolume) {
             //Increase volume
-            $this->WriteAttributeInteger('CyclingVolume', $cyclingVolume + 1);
-            $this->SendDebug(__FUNCTION__, 'Lautstärke: ' . ($cyclingVolume + 1), 0);
-            $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $cyclingVolume + 1);
+            $increasedVolume = $cyclingVolume + 1;
+            $this->WriteAttributeInteger('CyclingVolume', $increasedVolume);
+            $this->SendDebug(__FUNCTION__, 'Lautstärke: ' . $increasedVolume, 0);
+            $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $increasedVolume);
             //Try again
             if (!$setDeviceVolume) {
-                @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $cyclingVolume + 1);
+                @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $increasedVolume);
             }
             //Set next cycle
             $this->SetTimerInterval('IncreaseVolume', $this->CalculateNextCycle() * 1000);
