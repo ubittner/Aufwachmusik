@@ -1,6 +1,6 @@
 # Aufwachmusik  
 
-Diese Instanz schaltet ein Gerät und simuliert eine Aufwachmusik für ein entspanntes aufwachen.
+Diese Instanz schaltet ein Gerät und erhöht die Lautstärke für ein entspanntes aufwachen.
 
 Für dieses Modul besteht kein Anspruch auf Fehlerfreiheit, Weiterentwicklung, sonstige Unterstützung oder Support.  
 Bevor das Modul installiert wird, sollte unbedingt ein Backup von IP-Symcon durchgeführt werden.  
