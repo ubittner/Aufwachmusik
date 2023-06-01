@@ -13,4 +13,4 @@
 Folgende Module beinhaltet dieses Repository (in alphabetischer Reihenfolge):
 
 - __Aufwachmusik__ ([Dokumentation](Aufwachmusik))  
-  Dieses Modul schaltet ein Gerät und erhöht die Lautstärke für ein entspanntes aufwachen. 
+  Dieses Modul schaltet ein Gerät ein und erhöht die Lautstärke für ein entspanntes aufwachen. 
