@@ -173,6 +173,14 @@ class Aufwachmusik extends IPSModule
             }
         }
 
+        //Check presets
+        if (!$this->CheckDevicePresetsID()) {
+            $hideMode = true;
+        } else {
+            $hideMode = false;
+        }
+        @IPS_SetHidden($this->GetIDForIdent('Presets'), $hideMode);
+
         //Hide process finished
         if (!$this->GetValue('WakeUpMusic')) {
             @IPS_SetHidden($this->GetIDForIdent('ProcessFinished'), true);
