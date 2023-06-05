@@ -41,7 +41,7 @@ trait WeeklySchedule
             IPS_SetInfo($id, $this->InstanceID);
             IPS_SetIcon($id, 'Calendar');
             IPS_SetParent($id, $this->InstanceID);
-            IPS_SetPosition($id, 50);
+            IPS_SetPosition($id, 60);
             //Create actions
             IPS_SetEventScheduleAction($id, 0, 'Aus', 0x000000, '');
             IPS_SetEventScheduleAction($id, 1, 'An', 0x00FF00, '');

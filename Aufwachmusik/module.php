@@ -43,8 +43,12 @@ class Aufwachmusik extends IPSModule
         ##### Variables
 
         //Wake up music
+        $id = @$this->GetIDForIdent('WakeUpMusic');
         $this->RegisterVariableBoolean('WakeUpMusic', 'Aufwachmusik', '~Switch', 10);
         $this->EnableAction('WakeUpMusic');
+        if (!$id) {
+            IPS_SetIcon(@$this->GetIDForIdent('WakeUpMusic'), 'Sun');
+        }
 
         //Volume
         $id = @$this->GetIDForIdent('Volume');
@@ -97,9 +101,33 @@ class Aufwachmusik extends IPSModule
             $this->SetValue('Duration', 30);
         }
 
+        //Automatic power off
+        $profile = self::MODULE_PREFIX . '.' . $this->InstanceID . '.AutomaticPowerOff';
+        if (!IPS_VariableProfileExists($profile)) {
+            IPS_CreateVariableProfile($profile, 1);
+        }
+        IPS_SetVariableProfileIcon($profile, 'Melody');
+        IPS_SetVariableProfileValues($profile, 0, 120, 0);
+        IPS_SetVariableProfileDigits($profile, 0);
+        IPS_SetVariableProfileAssociation($profile, 0, 'Nie', '', 0xFF0000);
+        IPS_SetVariableProfileAssociation($profile, 5, '5 Min.', '', 0x0000FF);
+        IPS_SetVariableProfileAssociation($profile, 10, '10 Min.', '', 0x0000FF);
+        IPS_SetVariableProfileAssociation($profile, 15, '15 Min.', '', 0x0000FF);
+        IPS_SetVariableProfileAssociation($profile, 30, '30 Min.', '', 0x0000FF);
+        IPS_SetVariableProfileAssociation($profile, 45, '45 Min.', '', 0x0000FF);
+        IPS_SetVariableProfileAssociation($profile, 60, '60 Min.', '', 0x0000FF);
+        IPS_SetVariableProfileAssociation($profile, 90, '90 Min.', '', 0x0000FF);
+        IPS_SetVariableProfileAssociation($profile, 120, '120 Min.', '', 0x0000FF);
+        $id = @$this->GetIDForIdent('AutomaticPowerOff');
+        $this->RegisterVariableInteger('AutomaticPowerOff', 'Ausschalten', $profile, 50);
+        $this->EnableAction('AutomaticPowerOff');
+        if (!$id) {
+            $this->SetValue('AutomaticPowerOff', 0);
+        }
+
         //Process finished
         $id = @$this->GetIDForIdent('ProcessFinished');
-        $this->RegisterVariableString('ProcessFinished', 'Schaltvorgang bis', '', 60);
+        $this->RegisterVariableString('ProcessFinished', 'Schaltvorgang bis', '', 70);
         if (!$id) {
             IPS_SetIcon($this->GetIDForIdent('ProcessFinished'), 'Clock');
         }
@@ -113,6 +141,7 @@ class Aufwachmusik extends IPSModule
         #### Timer
 
         $this->RegisterTimer('IncreaseVolume', 0, self::MODULE_PREFIX . '_IncreaseVolume(' . $this->InstanceID . ');');
+        $this->RegisterTimer('AutomaticPowerOff', 0, self::MODULE_PREFIX . '_PowerDevice(' . $this->InstanceID . ', false);');
     }
 
     public function Destroy()
@@ -121,7 +150,7 @@ class Aufwachmusik extends IPSModule
         parent::Destroy();
 
         //Delete profiles
-        $profiles = ['Presets', 'Duration'];
+        $profiles = ['Presets', 'Duration', 'AutomaticPowerOff'];
         if (!empty($profiles)) {
             foreach ($profiles as $profile) {
                 $profileName = self::MODULE_PREFIX . '.' . $this->InstanceID . '.' . $profile;
@@ -179,7 +208,7 @@ class Aufwachmusik extends IPSModule
         } else {
             $hideMode = false;
         }
-        @IPS_SetHidden($this->GetIDForIdent('Presets'), $hideMode);
+        IPS_SetHidden($this->GetIDForIdent('Presets'), $hideMode);
 
         //Hide process finished
         if (!$this->GetValue('WakeUpMusic')) {
@@ -529,6 +558,7 @@ class Aufwachmusik extends IPSModule
             case 'Volume':
             case 'Presets':
             case 'Duration':
+            case 'AutomaticPowerOff':
                 $this->SetValue($Ident, $Value);
                 break;
 

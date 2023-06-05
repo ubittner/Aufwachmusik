@@ -34,18 +34,21 @@ trait Control
             $debugText = 'Aufwachmusik einschalten';
         }
         $this->SendDebug(__FUNCTION__, $debugText, 0);
+        //Reset timer
+        $this->SetTimerInterval('IncreaseVolume', 0);
+        $this->SetTimerInterval('AutomaticPowerOff', 0);
         //Off
         if (!$State) {
             $this->SetValue('WakeUpMusic', false);
             IPS_SetDisabled($this->GetIDForIdent('Volume'), false);
             IPS_SetDisabled($this->GetIDForIdent('Presets'), false);
             IPS_SetDisabled($this->GetIDForIdent('Duration'), false);
+            IPS_SetDisabled($this->GetIDForIdent('AutomaticPowerOff'), false);
             $this->SetValue('ProcessFinished', '');
             @IPS_SetHidden($this->GetIDForIdent('ProcessFinished'), true);
             $this->WriteAttributeInteger('TargetVolume', 0);
             $this->WriteAttributeInteger('CyclingVolume', 0);
             $this->WriteAttributeInteger('EndTime', 0);
-            $this->SetTimerInterval('IncreaseVolume', 0);
         } //On
         else {
             if (!$this->CheckDevicePowerID()) {
@@ -69,16 +72,15 @@ trait Control
             $this->SetValue('ProcessFinished', date('d.m.Y, H:i:s', $timestamp));
             @IPS_SetHidden($this->GetIDForIdent('ProcessFinished'), false);
             //Set attributes
-            $this->WriteAttributeInteger('TargetVolume', $this->GetValue('Volume'));
-            $this->WriteAttributeInteger('CyclingVolume', 1);
-            $this->SendDebug(__FUNCTION__, 'Lautstärke: 1', 0);
+            $targetVolume = $this->GetValue('Volume');
+            $this->WriteAttributeInteger('TargetVolume', $targetVolume);
+            $this->SendDebug(__FUNCTION__, 'Ziellautstärke: ' . $targetVolume, 0);
+            $volume = 1;
+            $this->WriteAttributeInteger('CyclingVolume', $volume);
+            $this->SendDebug(__FUNCTION__, 'Lautstärke: ' . $volume, 0);
             $this->WriteAttributeInteger('EndTime', $timestamp);
             //Set device volume
-            $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), 1);
-            //Try again
-            if (!$setDeviceVolume) {
-                @RequestAction($this->ReadPropertyInteger('DeviceVolume'), 1);
-            }
+            $this->SetDeviceVolume($volume);
             //Set device preset
             $powerOn = true;
             if ($this->CheckDevicePresetsID()) {
@@ -97,11 +99,7 @@ trait Control
             //Power device on
             if ($powerOn) {
                 $this->SendDebug(__FUNCTION__, 'Gerät einschalten', 0);
-                $powerOnDevice = @RequestAction($this->ReadPropertyInteger('DevicePower'), true);
-                //Try again
-                if (!$powerOnDevice) {
-                    @RequestAction($this->ReadPropertyInteger('DevicePower'), true);
-                }
+                $this->PowerDevice(true);
             }
             //Set next cycle
             $this->SetTimerInterval('IncreaseVolume', $this->CalculateNextCycle() * 1000);
@@ -123,31 +121,89 @@ trait Control
         if (!$this->CheckDeviceVolumeID()) {
             return;
         }
+        //cycling volume
         $cyclingVolume = $this->ReadAttributeInteger('CyclingVolume');
+        $cyclingVolume++;
+        $this->SendDebug(__FUNCTION__, 'Lautstärke: ' . $cyclingVolume, 0);
+        $this->WriteAttributeInteger('CyclingVolume', $cyclingVolume);
+        //Target volume
         $targetVolume = $this->ReadAttributeInteger('TargetVolume');
-        //Last cycle
+        //Set device volume
+        $this->SetDeviceVolume($cyclingVolume);
+        //Check for last cycle
         if ($cyclingVolume == $targetVolume) {
-            $this->ToggleWakeUpMusic(false);
+            //Check automatic power off
+            $automaticPowerOff = $this->GetValue('AutomaticPowerOff');
+            if ($automaticPowerOff > 0) {
+                $this->SendDebug(__FUNCTION__, 'Ausschalten: ' . $this->GetValue('AutomaticPowerOff') . ' Minuten', 0);
+                IPS_SetDisabled($this->GetIDForIdent('AutomaticPowerOff'), true);
+                $timestamp = time() + $this->GetValue('AutomaticPowerOff') * 60;
+                $this->SetValue('ProcessFinished', date('d.m.Y, H:i:s', $timestamp));
+                $this->SetTimerInterval('IncreaseVolume', 0);
+                $this->SetTimerInterval('AutomaticPowerOff', $automaticPowerOff * 60 * 1000);
+            } else {
+                $this->ToggleWakeUpMusic(false);
+            }
             return;
         }
-        //Cycle
-        $actualDeviceVolume = GetValue($this->ReadPropertyInteger('DeviceVolume'));
-        if ($actualDeviceVolume >= 1 && $actualDeviceVolume < $targetVolume) {
-            //Increase volume
-            $increasedVolume = $cyclingVolume + 1;
-            $this->WriteAttributeInteger('CyclingVolume', $increasedVolume);
-            $this->SendDebug(__FUNCTION__, 'Lautstärke: ' . $increasedVolume, 0);
-            $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $increasedVolume);
-            //Try again
-            if (!$setDeviceVolume) {
-                @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $increasedVolume);
-            }
-            //Set next cycle
-            $this->SetTimerInterval('IncreaseVolume', $this->CalculateNextCycle() * 1000);
+        //Set next cycle
+        $this->SetTimerInterval('IncreaseVolume', $this->CalculateNextCycle() * 1000);
+    }
+
+    /**
+     * Powers the device off or on.
+     *
+     * @param bool $State
+     * false =  off,
+     * true =   on
+     *
+     * @return bool
+     * false =  an error occurred,
+     * true =   successful
+     *
+     * @throws Exception
+     */
+    public function PowerDevice(bool $State): bool
+    {
+        $debugText = 'Gerät ausschalten';
+        if ($State) {
+            $debugText = 'Gerät einschalten';
         }
+        $this->SendDebug(__FUNCTION__, $debugText, 0);
+        if (!$this->CheckDevicePowerID()) {
+            return false;
+        }
+        $powerDevice = @RequestAction($this->ReadPropertyInteger('DevicePower'), $State);
+        //Try again
+        if (!$powerDevice) {
+            $powerDevice = @RequestAction($this->ReadPropertyInteger('DevicePower'), $State);
+        }
+        return $powerDevice;
     }
 
     #################### Private
+
+    /**
+     * Sets the volume of the device.
+     *
+     * @param int $Volume
+     * Volume
+     *
+     * @return bool
+     * false =  an error occurred,
+     * true =   successful
+     *
+     * @throws Exception
+     */
+    private function SetDeviceVolume(int $Volume): bool
+    {
+        $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $Volume);
+        //Try again
+        if (!$setDeviceVolume) {
+            $setDeviceVolume = @RequestAction($this->ReadPropertyInteger('DeviceVolume'), $Volume);
+        }
+        return $setDeviceVolume;
+    }
 
     /**
      * Calculates the next cycle.
